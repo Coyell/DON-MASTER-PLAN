@@ -39,6 +39,57 @@ const manifestLink = document.createElement('link');
 manifestLink.rel = 'manifest';
 manifestLink.href = manifestURL;
 document.head.appendChild(manifestLink);
+
+// Service Worker — caches entire app after first load for full offline use
+if ('serviceWorker' in navigator) {
+  const CACHE_NAME = 'don-plan-v2';
+  const swCode = `
+    const CACHE = '${CACHE_NAME}';
+    self.addEventListener('install', function(e) {
+      e.waitUntil(
+        caches.open(CACHE).then(function(cache) {
+          return cache.addAll([self.location.href]);
+        }).then(function() {
+          return self.skipWaiting();
+        })
+      );
+    });
+    self.addEventListener('activate', function(e) {
+      e.waitUntil(
+        caches.keys().then(function(keys) {
+          return Promise.all(
+            keys.filter(function(k) { return k !== CACHE; })
+                .map(function(k) { return caches.delete(k); })
+          );
+        }).then(function() {
+          return self.clients.claim();
+        })
+      );
+    });
+    self.addEventListener('fetch', function(e) {
+      e.respondWith(
+        caches.match(e.request).then(function(cached) {
+          if (cached) return cached;
+          return fetch(e.request).then(function(response) {
+            return caches.open(CACHE).then(function(cache) {
+              cache.put(e.request, response.clone());
+              return response;
+            });
+          }).catch(function() {
+            return cached;
+          });
+        })
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], {type: 'application/javascript'});
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).then(function(reg) {
+    console.log('DON Plan: offline ready');
+  }).catch(function(err) {
+    console.log('SW reg failed:', err);
+  });
+}
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
